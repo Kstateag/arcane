@@ -1,8 +1,13 @@
 package notifications
 
 import (
+	"bytes"
 	"context"
+	json "encoding/json/v2"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
@@ -10,13 +15,16 @@ import (
 	"emperror.dev/errors"
 
 	"github.com/getarcaneapp/arcane/backend/v2/internal/models"
-	"github.com/nicholas-fedor/shoutrrr"
-	shoutrrrTypes "github.com/nicholas-fedor/shoutrrr/pkg/types"
 )
 
-// BuildGotifyURL converts GotifyConfig to Shoutrrr URL format
-// URL example: gotify://host[:port][/path]/token[?query]
-func BuildGotifyURL(config models.GotifyConfig) (string, error) {
+type gotifyMessageRequest struct {
+	Message  string `json:"message"`
+	Title    string `json:"title,omitempty"`
+	Priority int    `json:"priority"`
+}
+
+// buildGotifyEndpointInternal converts GotifyConfig into the native Gotify message API endpoint.
+func buildGotifyEndpointInternal(config models.GotifyConfig) (string, error) {
 	if config.Host == "" {
 		return "", errors.New("gotify host is required")
 	}
@@ -25,58 +33,97 @@ func BuildGotifyURL(config models.GotifyConfig) (string, error) {
 		return "", errors.New("gotify token is required")
 	}
 
-	u := &url.URL{
-		Scheme: "gotify",
+	scheme := "https"
+	if config.DisableTLS {
+		scheme = "http"
 	}
 
 	host := config.Host
 	if config.Port > 0 {
-		u.Host = fmt.Sprintf("%s:%d", host, config.Port)
+		host = net.JoinHostPort(host, strconv.Itoa(config.Port))
+	}
+
+	path := strings.Trim(config.Path, "/")
+	if path == "" {
+		path = "/message"
 	} else {
-		u.Host = host
+		path = "/" + path + "/message"
 	}
 
-	path := config.Path
-	if path != "" && !strings.HasPrefix(path, "/") {
-		path = "/" + path
-	}
-	path = strings.TrimSuffix(path, "/")
-	u.Path = path + "/" + config.Token
-
-	q := u.Query()
-	// Always set priority if it's within valid range, 0 is a valid priority
-	q.Set("priority", strconv.Itoa(config.Priority))
-
-	if config.Title != "" {
-		q.Set("title", config.Title)
-	}
-	if config.DisableTLS {
-		q.Set("disabletls", "yes")
+	endpoint := &url.URL{
+		Scheme: scheme,
+		Host:   host,
+		Path:   path,
 	}
 
-	u.RawQuery = q.Encode()
-	return u.String(), nil
+	return endpoint.String(), nil
 }
 
-// SendGotify sends a message via Shoutrrr Gotify using proper service configuration
+// SendGotify sends a message directly through the Gotify HTTP API.
 func SendGotify(ctx context.Context, config models.GotifyConfig, message string) error {
-	shoutrrrURL, err := BuildGotifyURL(config)
-	if err != nil {
-		return errors.WrapIf(err, "failed to build shoutrrr Gotify URL")
+	if message == "" {
+		return errors.New("gotify message is required")
 	}
 
-	sender, err := shoutrrr.CreateSender(shoutrrrURL)
+	endpoint, err := buildGotifyEndpointInternal(config)
 	if err != nil {
-		return errors.WrapIf(err, "failed to create shoutrrr Gotify sender")
+		return errors.WrapIf(err, "failed to build gotify endpoint")
 	}
 
-	params := &shoutrrrTypes.Params{}
+	payload := gotifyMessageRequest{
+		Message:  message,
+		Title:    config.Title,
+		Priority: config.Priority,
+	}
 
-	errs := sender.Send(message, params)
-	for _, err := range errs {
-		if err != nil {
-			return errors.WrapIf(err, "failed to send Gotify message via shoutrrr")
+	body, err := json.Marshal(payload)
+	if err != nil {
+		return errors.WrapIf(err, "failed to marshal gotify message")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
+	if err != nil {
+		return errors.WrapIf(err, "failed to create gotify request")
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Gotify-Key", config.Token)
+
+	client := &http.Client{
+		CheckRedirect: func(redirectReq *http.Request, via []*http.Request) error {
+			if len(via) == 0 {
+				return nil
+			}
+
+			originalURL := via[0].URL
+			if redirectReq.URL.Scheme != originalURL.Scheme ||
+				redirectReq.URL.Host != originalURL.Host {
+				return errors.New("refusing Gotify redirect to a different origin")
+			}
+
+			return nil
+		},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return errors.WrapIf(err, "failed to send gotify request")
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		responseBody, readErr := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		if readErr != nil {
+			return errors.WrapIf(readErr, "failed to read gotify error response")
 		}
+
+		detail := strings.TrimSpace(string(responseBody))
+		if detail == "" {
+			detail = http.StatusText(resp.StatusCode)
+		}
+
+		return fmt.Errorf("gotify returned HTTP %d: %s", resp.StatusCode, detail)
 	}
+
 	return nil
 }
