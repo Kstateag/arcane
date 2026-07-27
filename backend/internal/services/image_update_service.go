@@ -23,11 +23,13 @@ import (
 	"github.com/getarcaneapp/arcane/backend/v2/pkg/utils"
 	"github.com/getarcaneapp/arcane/types/v2/containerregistry"
 	"github.com/getarcaneapp/arcane/types/v2/imageupdate"
+	"github.com/moby/moby/api/types/container"
 	"github.com/moby/moby/api/types/image"
 	"github.com/moby/moby/client"
 	"github.com/samber/mo"
 	"go.getarcane.app/sys/crypto"
 	"go.getarcane.app/updater/digest"
+	"go.getarcane.app/updater/labels"
 	"go.getarcane.app/updater/refs"
 	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
@@ -616,35 +618,124 @@ func (s *ImageUpdateService) getAllImageRefsInternal(ctx context.Context, limit 
 		return nil, err
 	}
 
-	apiCtx, cancel := s.dockerAPIContextInternal(ctx)
-	defer cancel()
-
-	imageList, err := dockerClient.ImageList(apiCtx, client.ImageListOptions{})
+	imageCtx, cancelImage := s.dockerAPIContextInternal(ctx)
+	imageList, err := dockerClient.ImageList(imageCtx, client.ImageListOptions{})
+	cancelImage()
 	if err != nil {
 		return nil, errors.WrapIf(err, "failed to list Docker images")
 	}
 
-	return dedupeImageRefsFromSummariesInternal(imageList.Items, limit), nil
+	containerCtx, cancelContainers := s.dockerAPIContextInternal(ctx)
+	containerList, err := dockerClient.ContainerList(containerCtx, client.ContainerListOptions{All: true})
+	cancelContainers()
+	if err != nil {
+		slog.WarnContext(ctx, "failed to list Docker containers; continuing without updater opt-out filtering", "error", err.Error())
+		return imageRefsFromSummariesInternal(imageList.Items, limit), nil
+	}
+
+	return filterImageSummariesByContainerOptOutInternal(imageList.Items, containerList.Items, limit), nil
 }
 
-func dedupeImageRefsFromSummariesInternal(images []image.Summary, limit int) []string {
+func imageRefsFromSummariesInternal(images []image.Summary, limit int) []string {
 	seen := make(map[string]struct{})
-	var imageRefs []string
-	for _, img := range images {
-		for _, tag := range img.RepoTags {
-			if tag != "<none>:<none>" {
-				if _, exists := seen[tag]; exists {
-					continue
-				}
-				seen[tag] = struct{}{}
-				imageRefs = append(imageRefs, tag)
+	imageRefs := make([]string, 0)
+
+	for _, summary := range images {
+		for _, imageRef := range summary.RepoTags {
+			if imageRef == "<none>:<none>" {
+				continue
 			}
+			if _, exists := seen[imageRef]; exists {
+				continue
+			}
+
+			seen[imageRef] = struct{}{}
+			imageRefs = append(imageRefs, imageRef)
 			if limit > 0 && len(imageRefs) >= limit {
-				return imageRefs[:limit]
+				return imageRefs
 			}
 		}
 	}
+
 	return imageRefs
+}
+
+type imageContainerUsageInternal struct {
+	optedOut bool
+	eligible bool
+}
+
+func filterImageSummariesByContainerOptOutInternal(images []image.Summary, containers []container.Summary, limit int) []string {
+	usageByImageID := make(map[string]imageContainerUsageInternal)
+	usageByRef := make(map[string]imageContainerUsageInternal)
+
+	for _, summary := range containers {
+		disabled := labels.IsUpdateDisabled(summary.Labels)
+		usage := imageContainerUsageInternal{
+			optedOut: disabled,
+			eligible: !disabled,
+		}
+
+		if imageID := strings.TrimSpace(summary.ImageID); imageID != "" {
+			usageByImageID[imageID] = mergeImageContainerUsageInternal(usageByImageID[imageID], usage)
+		}
+
+		imageRef := strings.TrimSpace(summary.Image)
+		if imageRef == "" || refs.IsImageIDLikeReference(imageRef) {
+			continue
+		}
+
+		normalizedRef := refs.NormalizeImageUpdateRef(imageRef)
+		if normalizedRef == "" {
+			continue
+		}
+
+		usageByRef[normalizedRef] = mergeImageContainerUsageInternal(usageByRef[normalizedRef], usage)
+	}
+
+	seen := make(map[string]struct{})
+	filtered := make([]string, 0)
+
+	for _, summary := range images {
+		imageUsage, hasImageUsage := usageByImageID[strings.TrimSpace(summary.ID)]
+
+		for _, imageRef := range summary.RepoTags {
+			if imageRef == "<none>:<none>" {
+				continue
+			}
+			if _, exists := seen[imageRef]; exists {
+				continue
+			}
+
+			usage := imageUsage
+			hasUsage := hasImageUsage
+
+			normalizedRef := refs.NormalizeImageUpdateRef(imageRef)
+			if refUsage, hasRefUsage := usageByRef[normalizedRef]; hasRefUsage {
+				usage = mergeImageContainerUsageInternal(usage, refUsage)
+				hasUsage = true
+			}
+
+			if hasUsage && usage.optedOut && !usage.eligible {
+				continue
+			}
+
+			seen[imageRef] = struct{}{}
+			filtered = append(filtered, imageRef)
+			if limit > 0 && len(filtered) >= limit {
+				return filtered
+			}
+		}
+	}
+
+	return filtered
+}
+
+func mergeImageContainerUsageInternal(current, next imageContainerUsageInternal) imageContainerUsageInternal {
+	return imageContainerUsageInternal{
+		optedOut: current.optedOut || next.optedOut,
+		eligible: current.eligible || next.eligible,
+	}
 }
 
 func (s *ImageUpdateService) inspectLocalImageSnapshotInternal(ctx context.Context, imageRef string, composeBuildRefs map[string]struct{}) (*localImageSnapshot, error) {
