@@ -163,7 +163,7 @@ func TestNotificationService_DispatchNotification_UnsupportedKindReturnsSentinel
 	}).Error)
 
 	_, err := svc.DispatchNotification(ctx, token, notificationdto.DispatchRequest{
-		Kind: notificationdto.DispatchKind("bogus_kind"),
+		Kind: "bogus_kind",
 	})
 
 	require.Error(t, err)

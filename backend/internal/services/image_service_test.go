@@ -203,7 +203,7 @@ func TestGetPullOptionsWithAuth_ExternalCredentialsOverrideDBRegistryInternal(t 
 
 func TestImageServicePullImageRetriesAnonymouslyAfterAuthRejectedInternal(t *testing.T) {
 	db := setupProjectTestDB(t)
-	authHeaders := []string{}
+	var authHeaders []string
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasSuffix(r.URL.Path, "/images/create") {
 			http.NotFound(w, r)

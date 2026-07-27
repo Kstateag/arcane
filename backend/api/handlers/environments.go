@@ -1256,12 +1256,12 @@ func isSensitiveMTLSAssetNameInternal(fileName string) bool {
 }
 
 func environmentMTLSDownloadBaseNameInternal(env *models.Environment) string {
-	base := strings.TrimSpace(env.Name)
-	if base == "" {
-		base = "environment"
+	baseName := strings.TrimSpace(env.Name)
+	if baseName == "" {
+		baseName = "environment"
 	}
 
-	base = strings.Map(func(r rune) rune {
+	baseName = strings.Map(func(r rune) rune {
 		switch {
 		case r >= 'a' && r <= 'z':
 			return r
@@ -1272,24 +1272,24 @@ func environmentMTLSDownloadBaseNameInternal(env *models.Environment) string {
 		default:
 			return '-'
 		}
-	}, base)
+	}, baseName)
 
-	base = strings.Trim(base, "-")
-	if base == "" {
-		base = "environment"
+	baseName = strings.Trim(baseName, "-")
+	if baseName == "" {
+		baseName = "environment"
 	}
 
-	return base + "-" + env.ID
+	return baseName + "-" + env.ID
 }
 
 func environmentMTLSAssetDownloadNameInternal(env *models.Environment, fileName string) string {
-	base := environmentMTLSDownloadBaseNameInternal(env)
+	baseName := environmentMTLSDownloadBaseNameInternal(env)
 
 	switch fileName {
 	case "agent.crt":
-		return base + ".pem"
+		return baseName + ".pem"
 	case "agent.key":
-		return base + ".key"
+		return baseName + ".key"
 	default:
 		return fileName
 	}

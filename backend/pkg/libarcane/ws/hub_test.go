@@ -3,7 +3,9 @@ package ws
 import (
 	"bytes"
 	"context"
+	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -35,14 +37,18 @@ func newTestWSPair(t *testing.T) (clientConn *websocket.Conn, serverConn *websoc
 	cc, resp, err := websocket.DefaultDialer.Dial(url, nil)
 	require.NoError(t, err)
 	if resp != nil {
-		resp.Body.Close()
+		require.NoError(t, resp.Body.Close())
 	}
 
 	sc := <-serverReady
 
 	return cc, sc, func() {
-		cc.Close()
-		sc.Close()
+		require.NoError(t, cc.Close())
+		// The hub and the forwarders own the server side and may already have
+		// closed it, so only an unexpected failure is worth reporting.
+		if err := sc.Close(); err != nil && !errors.Is(err, net.ErrClosed) {
+			t.Errorf("close server websocket connection: %v", err)
+		}
 		server.Close()
 	}
 }

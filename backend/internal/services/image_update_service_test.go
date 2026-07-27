@@ -550,16 +550,16 @@ func TestImageUpdateService_GetImageRefByIDInternal_UsesContainerFallback(t *tes
 				dockerService: &DockerClientService{client: newTestDockerClient(t, server)},
 			}
 
-			ref, err := svc.getImageRefByIDInternal(context.Background(), imageID)
+			imageRef, err := svc.getImageRefByIDInternal(context.Background(), imageID)
 			if tt.wantErr != "" {
 				require.Error(t, err)
 				assert.ErrorContains(t, err, tt.wantErr)
-				assert.Empty(t, ref)
+				assert.Empty(t, imageRef)
 				return
 			}
 
 			require.NoError(t, err)
-			assert.Equal(t, tt.wantRef, ref)
+			assert.Equal(t, tt.wantRef, imageRef)
 		})
 	}
 }
@@ -1601,12 +1601,12 @@ func TestImageUpdateService_SendBatchNotifications_PartialFailureStillMarksNotif
 	}))
 	defer broken.Close()
 
-	for _, url := range []string{healthy.URL, broken.URL} {
+	for _, serverURL := range []string{healthy.URL, broken.URL} {
 		require.NoError(t, db.Create(&models.NotificationSettings{
 			Provider: models.NotificationProviderGeneric,
 			Enabled:  true,
 			Config: models.JSON{
-				"webhookUrl":  url,
+				"webhookUrl":  serverURL,
 				"method":      "POST",
 				"contentType": "application/json",
 			},
@@ -1714,12 +1714,12 @@ func TestImageUpdateService_ParseAndGroupImages_DedupesNormalizedRefs(t *testing
 	require.Len(t, regRepos["docker.io"], 2)
 
 	firstRefSet := map[string]struct{}{}
-	for _, ref := range grouped[0].refs {
-		firstRefSet[ref] = struct{}{}
+	for _, imageRef := range grouped[0].refs {
+		firstRefSet[imageRef] = struct{}{}
 	}
 	secondRefSet := map[string]struct{}{}
-	for _, ref := range grouped[1].refs {
-		secondRefSet[ref] = struct{}{}
+	for _, imageRef := range grouped[1].refs {
+		secondRefSet[imageRef] = struct{}{}
 	}
 
 	// Each normalized image should only be checked once, while retaining all aliases.
@@ -1767,8 +1767,8 @@ func newBlockedDockerAPIServerInternal(t *testing.T, pathContains string) *httpt
 }
 
 func containsAll(set map[string]struct{}, refs ...string) bool {
-	for _, ref := range refs {
-		if _, ok := set[ref]; !ok {
+	for _, imageRef := range refs {
+		if _, ok := set[imageRef]; !ok {
 			return false
 		}
 	}

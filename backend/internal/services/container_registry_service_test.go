@@ -75,9 +75,9 @@ func newDockerHubRateLimitTestClient(t *testing.T, handler http.HandlerFunc) *ht
 	targetURL, err := url.Parse(server.URL)
 	require.NoError(t, err)
 
-	client := server.Client()
-	baseTransport := client.Transport
-	client.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
+	httpClient := server.Client()
+	baseTransport := httpClient.Transport
+	httpClient.Transport = roundTripFunc(func(req *http.Request) (*http.Response, error) {
 		if req.URL.Host == "registry-1.docker.io" || req.URL.Host == "auth.docker.io" {
 			rewritten := req.Clone(req.Context())
 			rewritten.URL.Scheme = targetURL.Scheme
@@ -88,7 +88,7 @@ func newDockerHubRateLimitTestClient(t *testing.T, handler http.HandlerFunc) *ht
 		return baseTransport.RoundTrip(req)
 	})
 
-	return client
+	return httpClient
 }
 
 func TestNewContainerRegistryService_InitializesDistributionHTTPClient(t *testing.T) {

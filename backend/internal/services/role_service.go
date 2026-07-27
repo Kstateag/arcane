@@ -364,7 +364,7 @@ func (s *RoleService) UpdateRole(ctx context.Context, id, name string, descripti
 		}
 		existing.Name = name
 		existing.Description = description
-		existing.Permissions = models.StringSlice(permissions)
+		existing.Permissions = permissions
 		if err := tx.Save(&existing).Error; err != nil {
 			return errors.WrapIf(err, "failed to update role")
 		}

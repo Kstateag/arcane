@@ -388,8 +388,8 @@ func TestTunnelClient_InternalHelpers(t *testing.T) {
 	client := NewTunnelClient(cfg, nil)
 
 	// Manually connect
-	url := "ws" + strings.TrimPrefix(server.URL, "http")
-	conn, resp, err := websocket.DefaultDialer.Dial(url, nil)
+	serverURL := "ws" + strings.TrimPrefix(server.URL, "http")
+	conn, resp, err := websocket.DefaultDialer.Dial(serverURL, nil)
 	require.NoError(t, err)
 	if resp != nil {
 		defer func() { _ = resp.Body.Close() }()
@@ -1642,7 +1642,7 @@ func startTestGRPCTunnelServerOnAPIPathInternal(t *testing.T, ctx context.Contex
 func startTestTunnelServiceOnAPIPathInternal(t *testing.T, ctx context.Context, service tunnelpb.TunnelServiceServer) (string, func()) {
 	t.Helper()
 
-	serverOptions := []grpc.ServerOption{}
+	var serverOptions []grpc.ServerOption
 	if tunnelServer, ok := service.(*TunnelServer); ok {
 		serverOptions = tunnelServer.GRPCServerOptions()
 	}
@@ -2016,7 +2016,7 @@ func TestTunnelClient_syncPollManagedSessionInternal_IdleUsesBoundedStopTimeout(
 func startTestPollAndGRPCManagerInternal(t *testing.T, ctx context.Context, service tunnelpb.TunnelServiceServer, pollResp TunnelPollResponse) (string, func()) {
 	t.Helper()
 
-	serverOptions := []grpc.ServerOption{}
+	var serverOptions []grpc.ServerOption
 	if tunnelServer, ok := service.(*TunnelServer); ok {
 		serverOptions = tunnelServer.GRPCServerOptions()
 	}

@@ -326,7 +326,7 @@ func TestEventService_ListEventsPaginated_TypeCategoryFilter(t *testing.T) {
 		require.NoError(t, err)
 		types := make([]string, 0, len(events))
 		for _, e := range events {
-			types = append(types, string(e.Type))
+			types = append(types, e.Type)
 		}
 		return types
 	}

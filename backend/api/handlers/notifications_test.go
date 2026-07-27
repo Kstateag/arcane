@@ -133,7 +133,7 @@ func TestDispatchNotification_ReturnsBadRequestForUnsupportedDispatchKind(t *tes
 	resp, err := h.DispatchNotification(ctx, &DispatchNotificationInput{
 		APIKey: token,
 		Body: notificationdto.DispatchRequest{
-			Kind: notificationdto.DispatchKind("bogus_kind"),
+			Kind: "bogus_kind",
 		},
 	})
 	require.Nil(t, resp)

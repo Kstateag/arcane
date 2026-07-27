@@ -361,8 +361,8 @@ func (s *SettingsService) isEnvOverrideActiveInternal(key string) bool {
 }
 
 func (s *SettingsService) GetSettings(ctx context.Context) (*models.Settings, error) {
-	settings := s.getEffectiveSettingsConfigInternal(ctx)
-	return settings, nil
+	settingsCfg := s.getEffectiveSettingsConfigInternal(ctx)
+	return settingsCfg, nil
 }
 
 // GetSettingsOrDefaults is a convenience for hot paths that need a snapshot but cannot
@@ -381,9 +381,9 @@ func (s *SettingsService) GetSettingsOrDefaults(ctx context.Context) *models.Set
 }
 
 func (s *SettingsService) getEffectiveSettingsConfigInternal(ctx context.Context) *models.Settings {
-	settings := s.GetSettingsConfig().Clone()
-	s.applyEnvOverrides(ctx, settings)
-	return settings
+	settingsCfg := s.GetSettingsConfig().Clone()
+	s.applyEnvOverrides(ctx, settingsCfg)
+	return settingsCfg
 }
 
 func (s *SettingsService) UpdateSetting(ctx context.Context, key, value string) error {
@@ -456,7 +456,7 @@ func (s *SettingsService) UpdateSettings(ctx context.Context, updates settings.U
 	if err := s.refreshSettingsCacheInternal(ctx); err != nil {
 		return nil, err
 	}
-	settings := s.GetSettingsConfig()
+	settingsCfg := s.GetSettingsConfig()
 
 	// Now call callbacks after in-memory config is updated
 	if changedPolling && s.OnImagePollingSettingsChanged != nil {
@@ -488,7 +488,7 @@ func (s *SettingsService) UpdateSettings(ctx context.Context, updates settings.U
 		s.OnTimeoutSettingsChanged(ctx, changedTimeouts)
 	}
 
-	return settings.ToSettingVariableSlice(models.SettingVisibilityNonAdmin, false), nil
+	return settingsCfg.ToSettingVariableSlice(models.SettingVisibilityNonAdmin, false), nil
 }
 
 func (s *SettingsService) prepareUpdateValues(updates settings.Update, cfg, defaultCfg *models.Settings) ([]models.SettingVariable, bool, bool, bool, bool, bool, []libarcane.SettingUpdate, error) {

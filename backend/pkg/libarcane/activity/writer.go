@@ -69,7 +69,7 @@ func (w *Writer) Write(p []byte) (int, error) {
 	}
 
 	w.mu.Lock()
-	messages := []writerAppendMessage{}
+	var messages []writerAppendMessage
 	w.buffer = append(w.buffer, p...)
 	for {
 		idx := bytes.IndexByte(w.buffer, '\n')
@@ -131,7 +131,7 @@ func (w *Writer) processLineInternal(line string) mo.Option[writerAppendMessage]
 		return mo.Some(writerAppendMessage{
 			level:   models.ActivityMessageLevelError,
 			message: valueToStringInternal(errorValue),
-			payload: models.JSON(payload),
+			payload: payload,
 			step:    w.defaultStep,
 		})
 	}
@@ -151,7 +151,7 @@ func (w *Writer) processLineInternal(line string) mo.Option[writerAppendMessage]
 	return mo.Some(writerAppendMessage{
 		level:   models.ActivityMessageLevelInfo,
 		message: line,
-		payload: models.JSON(payload),
+		payload: payload,
 		step:    w.defaultStep,
 	})
 }
