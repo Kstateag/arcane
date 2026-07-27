@@ -501,7 +501,7 @@ func validateScriptPathInternal(projectPath, scriptPath string) error {
 
 	info, err := os.Lstat(absScript)
 	if err != nil {
-		return errors.WrapIff(err, "stat script %q", scriptPath)
+		return describeScriptStatErrorInternal(err, projectPath, scriptPath, absScript)
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
 		return errors.Errorf("script path %q is a symlink; symlinks are not allowed", scriptPath)
@@ -510,6 +510,19 @@ func validateScriptPathInternal(projectPath, scriptPath string) error {
 		return errors.Errorf("script path %q refers to a directory", scriptPath)
 	}
 	return nil
+}
+
+func describeScriptStatErrorInternal(err error, projectPath, scriptPath, resolvedScriptPath string) error {
+	if os.IsPermission(err) {
+		return errors.WrapIff(
+			err,
+			"Arcane pre-deploy validation could not inspect script %q. %s",
+			scriptPath,
+			describeLifecyclePathAccessInternal(projectPath, resolvedScriptPath),
+		)
+	}
+
+	return errors.WrapIff(err, "stat script %q", scriptPath)
 }
 
 // parseLifecycleEnvTextInternal reads admin-configured env config as the
