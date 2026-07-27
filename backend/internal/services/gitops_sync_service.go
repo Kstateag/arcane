@@ -2,7 +2,7 @@ package services
 
 import (
 	"context"
-	json "encoding/json/v2"
+	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"maps"
@@ -952,6 +952,9 @@ func (s *GitOpsSyncService) PerformSync(ctx context.Context, environmentID, id s
 	}
 	if err != nil {
 		return result, err
+	}
+	if source == nil {
+		return result, errors.New("prepared sync source is missing")
 	}
 
 	if sync.TargetType == "swarm_stack" {
@@ -2000,12 +2003,12 @@ func (s *GitOpsSyncService) seedStageEnvFromCandidateDirInternal(ctx context.Con
 		}
 	}
 
-	switch {
-	case hasEffective:
+	if hasEffective {
 		if err := projects.WriteEnvFile(projectsDir, stagePath, effective); err != nil {
 			return errors.WrapIf(err, "seed stage .env")
 		}
-	case hasGit || hasOverride:
+	} else {
+		// Only .env.git and/or project.env exist, so derive .env from them.
 		merged, mergeErr := projects.BuildEffectiveEnvContent(gitSource, override)
 		if mergeErr != nil {
 			return errors.WrapIf(mergeErr, "build effective env from pre-existing project")

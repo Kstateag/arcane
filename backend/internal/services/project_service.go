@@ -3,7 +3,7 @@ package services
 import (
 	"bufio"
 	"context"
-	json "encoding/json/v2"
+	"encoding/json/v2"
 	stderrors "errors"
 	"fmt"
 	"io"
@@ -2565,7 +2565,7 @@ func (s *ProjectService) buildServiceImageForDeploy(
 		project.Services[serviceName] = updatedSvc
 	}
 
-	if _, err := s.buildService.BuildImage(ctx, types.LOCAL_DOCKER_ENVIRONMENT_ID, buildReq, progressWriter, serviceName, user); err != nil {
+	if _, err := s.buildService.BuildImage(ctx, types.LocalDockerEnvironmentID, buildReq, progressWriter, serviceName, user); err != nil {
 		return err
 	}
 
@@ -2748,7 +2748,7 @@ func (s *ProjectService) buildProjectServicesInternal(ctx context.Context, proje
 		}
 
 		buildCount++
-		if _, err := s.buildService.BuildImage(ctx, types.LOCAL_DOCKER_ENVIRONMENT_ID, buildReq, progressWriter, name, user); err != nil {
+		if _, err := s.buildService.BuildImage(ctx, types.LocalDockerEnvironmentID, buildReq, progressWriter, name, user); err != nil {
 			return err
 		}
 	}

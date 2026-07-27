@@ -18,7 +18,7 @@ import (
 	"github.com/getarcaneapp/arcane/types/v2/env"
 	"github.com/getarcaneapp/arcane/types/v2/jobschedule"
 	settingstypes "github.com/getarcaneapp/arcane/types/v2/settings"
-	sqlite "github.com/libtnb/sqlite"
+	"github.com/libtnb/sqlite"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 )

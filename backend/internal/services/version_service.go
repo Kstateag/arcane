@@ -2,7 +2,7 @@ package services
 
 import (
 	"context"
-	json "encoding/json/v2"
+	"encoding/json/v2"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -128,7 +128,10 @@ func (s *VersionService) fetchLatestReleaseInternal(ctx context.Context) (latest
 
 func (s *VersionService) GetLatestVersion(ctx context.Context) (string, error) {
 	rel, err := s.getLatestReleaseInternal(ctx)
-	return rel.TagName, err
+	if err != nil {
+		return "", err
+	}
+	return rel.TagName, nil
 }
 
 func (s *VersionService) IsNewer(latest, current string) bool {

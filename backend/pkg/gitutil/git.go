@@ -254,7 +254,11 @@ func addHostKey(knownHostsPath, hostname string, key gossh.PublicKey) (err error
 	if err := fileLock.Lock(); err != nil {
 		return errors.WrapIf(err, "failed to acquire lock on known_hosts file")
 	}
-	defer fileLock.Unlock() //nolint:errcheck
+	defer func() {
+		if unlockErr := fileLock.Unlock(); unlockErr != nil && err == nil {
+			err = errors.WrapIf(unlockErr, "failed to release lock on known_hosts file")
+		}
+	}()
 
 	// Append to the file
 	file, err := os.OpenFile(knownHostsPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)

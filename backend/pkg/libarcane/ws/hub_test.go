@@ -337,11 +337,9 @@ func TestHub_BroadcastOverloadAggregatesDropWarning(t *testing.T) {
 	const dropCount = 1000
 	var wg sync.WaitGroup
 	for range dropCount {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			h.Broadcast([]byte("overload"))
-		}()
+		})
 	}
 	wg.Wait()
 
@@ -377,7 +375,7 @@ func TestHub_ConcurrentOperations(t *testing.T) {
 	}, goroutines)
 	for i := range goroutines {
 		_, pairs[i].sc, pairs[i].cleanup = newTestWSPair(t)
-		defer pairs[i].cleanup()
+		t.Cleanup(pairs[i].cleanup)
 	}
 
 	for i := range goroutines {

@@ -683,7 +683,7 @@ func applyFederatedRoleScopeUpdateInternal(existing *models.FederatedCredential,
 		if normalizedRoleID == "" {
 			return false, common.Classify(common.ErrFederatedCredentialInvalid, errors.New("invalid federated credential"))
 		}
-		roleChanged = roleChanged || normalizedRoleID != existing.RoleID
+		roleChanged = normalizedRoleID != existing.RoleID
 		existing.RoleID = normalizedRoleID
 	}
 	if environmentID != nil {

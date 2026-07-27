@@ -26,8 +26,6 @@ import (
 	slogecho "github.com/samber/slog-echo/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 	"google.golang.org/grpc"
 )
 
@@ -287,8 +285,7 @@ func TestTunnelClient_WebSocket_ReconnectClosesStreams(t *testing.T) {
 		return n
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	defer close(stopManager)
 	go client.StartWithErrorChan(ctx, nil)
 
@@ -1656,7 +1653,7 @@ func startTestTunnelServiceOnAPIPathInternal(t *testing.T, ctx context.Context, 
 	lis, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	handler := h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.Header.Get("Content-Type"), "application/grpc") {
 			http.NotFound(w, r)
 			return
@@ -1676,10 +1673,15 @@ func startTestTunnelServiceOnAPIPathInternal(t *testing.T, ctx context.Context, 
 		clone.URL = &cloneURL
 		clone.RequestURI = cloneURL.Path
 		grpcServer.ServeHTTP(w, clone)
-	}), &http2.Server{})
+	})
+
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
 
 	httpServer := &http.Server{
 		Handler:           handler,
+		Protocols:         protocols,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -2025,7 +2027,7 @@ func startTestPollAndGRPCManagerInternal(t *testing.T, ctx context.Context, serv
 	lis, err := lc.Listen(ctx, "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 
-	handler := h2c.NewHandler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/api/tunnel/poll" {
 			w.Header().Set("Content-Type", "application/json")
 			require.NoError(t, json.NewEncoder(w).Encode(pollResp))
@@ -2051,10 +2053,15 @@ func startTestPollAndGRPCManagerInternal(t *testing.T, ctx context.Context, serv
 		clone.URL = &cloneURL
 		clone.RequestURI = cloneURL.Path
 		grpcServer.ServeHTTP(w, clone)
-	}), &http2.Server{})
+	})
+
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
 
 	httpServer := &http.Server{
 		Handler:           handler,
+		Protocols:         protocols,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 

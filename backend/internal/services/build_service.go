@@ -20,7 +20,7 @@ import (
 	"github.com/getarcaneapp/arcane/backend/v2/pkg/pagination"
 	imagetypes "github.com/getarcaneapp/arcane/types/v2/image"
 	buildapi "go.getarcane.app/builds/api"
-	contextsource "go.getarcane.app/builds/pkg/utils/contextsource"
+	"go.getarcane.app/builds/pkg/utils/contextsource"
 	buildtypes "go.getarcane.app/builds/types"
 	"gorm.io/gorm"
 )

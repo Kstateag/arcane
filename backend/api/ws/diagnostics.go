@@ -1,7 +1,7 @@
 package ws
 
 import (
-	json "encoding/json/v2"
+	"encoding/json/v2"
 	"net/http"
 	"net/http/pprof"
 	"time"

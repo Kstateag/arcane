@@ -248,6 +248,9 @@ func (s *ImageUpdateService) CheckImageUpdate(ctx context.Context, imageRef stri
 	if err == nil {
 		digestResult, snapshot, err = s.checkDigestUpdateWithSnapshotInternal(ctx, parts, composeBuildRefs)
 	}
+	if err == nil && digestResult == nil {
+		err = errors.New("digest update check returned no result")
+	}
 	if err != nil {
 		result := &imageupdate.Response{
 			Error:          err.Error(),
