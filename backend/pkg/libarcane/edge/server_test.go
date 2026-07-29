@@ -574,13 +574,16 @@ func TestTunnelServer_HandleEventCallback(t *testing.T) {
 	})
 
 	tunnel := NewAgentTunnelWithConn("env-edge", &fakeServerTunnelConn{})
+	deliveryTimer := time.NewTimer(streamDeliveryTimeout)
+	deliveryTimer.Stop()
+	defer deliveryTimer.Stop()
 	server.handleTunnelMessage(context.Background(), tunnel, &TunnelMessage{
 		Type: MessageTypeEvent,
 		Event: &TunnelEvent{
 			Type:  "container.start",
 			Title: "Container started",
 		},
-	})
+	}, deliveryTimer)
 
 	select {
 	case <-called:
@@ -600,6 +603,8 @@ func (f *fakeServerTunnelConn) IsExpectedReceiveError(error) bool { return false
 func (f *fakeServerTunnelConn) Close() error { return nil }
 
 func (f *fakeServerTunnelConn) IsClosed() bool { return false }
+
+func (f *fakeServerTunnelConn) Transport() string { return EdgeTransportWebSocket }
 
 type registerResponseOrderConn struct {
 	sendHook func(*TunnelMessage) error
@@ -625,6 +630,8 @@ func (f *registerResponseOrderConn) IsExpectedReceiveError(error) bool { return 
 func (f *registerResponseOrderConn) Close() error { return nil }
 
 func (f *registerResponseOrderConn) IsClosed() bool { return false }
+
+func (f *registerResponseOrderConn) Transport() string { return EdgeTransportGRPC }
 
 func TestTunnelServer_ManageConnectedTunnel_RegistersBeforeSendingGRPCRegisterResponse(t *testing.T) {
 	server := NewTunnelServer(nil, nil)
