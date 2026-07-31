@@ -4144,8 +4144,7 @@ func (s *ProjectService) StreamProjectLogs(ctx context.Context, projectID string
 
 	// Writer goroutine: compose logs -> pipe
 	go func() {
-		// timestamps not currently supported by ComposeLogs helper; follow/tail/since are used.
-		err := projects.ComposeLogs(ctx, projects.NormalizeProjectName(proj.Name), pw, follow, tail, since)
+		err := projects.ComposeLogs(ctx, projects.NormalizeProjectName(proj.Name), pw, follow, tail, since, timestamps)
 		_ = pw.Close()
 		done <- err
 	}()

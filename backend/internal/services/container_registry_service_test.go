@@ -12,6 +12,7 @@ import (
 
 	"emperror.dev/errors"
 	"github.com/getarcaneapp/arcane/backend/v2/internal/common"
+	"github.com/getarcaneapp/arcane/backend/v2/internal/database"
 	"github.com/getarcaneapp/arcane/backend/v2/internal/models"
 	"github.com/getarcaneapp/arcane/types/v2/containerregistry"
 	dockerregistry "github.com/moby/moby/api/types/registry"
@@ -1042,4 +1043,72 @@ func TestContainerRegistryService_InspectImageDigest_PreservesAnonymousUnauthori
 	assert.Contains(t, err.Error(), "anonymous access unauthorized")
 	assert.Contains(t, err.Error(), "status: 401")
 	assert.Contains(t, err.Error(), "failed to load enabled registries")
+}
+
+func createRegistryWithRepositoryNames(t *testing.T, svc *ContainerRegistryService, repositoryNames ...string) *models.ContainerRegistry {
+	t.Helper()
+
+	registry, err := svc.CreateRegistry(context.Background(), models.CreateContainerRegistryRequest{
+		URL:             "https://registry.example.com",
+		Username:        "my-user",
+		Token:           "my-token",
+		RepositoryNames: repositoryNames,
+	})
+	require.NoError(t, err)
+
+	return registry
+}
+
+func fetchRegistry(t *testing.T, db *database.DB, id string) models.ContainerRegistry {
+	t.Helper()
+
+	var fetched models.ContainerRegistry
+	require.NoError(t, db.WithContext(context.Background()).First(&fetched, "id = ?", id).Error)
+
+	return fetched
+}
+
+func TestContainerRegistryService_CreateRegistry_NormalizesAndPersistsRepositoryNames(t *testing.T) {
+	_, db := setupImageServiceAuthTest(t)
+	svc := NewContainerRegistryService(db, nil, nil)
+
+	// Entries are trimmed, empties dropped and duplicates removed while
+	// preserving first-occurrence order.
+	registry := createRegistryWithRepositoryNames(t, svc, " team ", "", "team", "team/platform", " team ")
+	assert.Equal(t, models.StringSlice{"team", "team/platform"}, registry.RepositoryNames)
+	assert.Equal(t, models.StringSlice{"team", "team/platform"}, fetchRegistry(t, db, registry.ID).RepositoryNames)
+}
+
+func TestContainerRegistryService_CreateRegistry_RejectsInvalidRepositoryName(t *testing.T) {
+	_, db := setupImageServiceAuthTest(t)
+	svc := NewContainerRegistryService(db, nil, nil)
+
+	_, err := svc.CreateRegistry(context.Background(), models.CreateContainerRegistryRequest{
+		URL:             "https://registry.example.com",
+		RepositoryNames: []string{"team:latest"},
+	})
+	require.ErrorIs(t, err, common.ErrValidation)
+	assert.Contains(t, errors.GetDetails(err), "repositoryNames")
+}
+
+func TestContainerRegistryService_UpdateRegistry_RepositoryNamesPointerSemantics(t *testing.T) {
+	_, db := setupImageServiceAuthTest(t)
+	svc := NewContainerRegistryService(db, nil, nil)
+
+	registry := createRegistryWithRepositoryNames(t, svc, "team", "team/platform")
+
+	// A nil pointer leaves the existing names untouched.
+	updated, err := svc.UpdateRegistry(context.Background(), registry.ID, models.UpdateContainerRegistryRequest{
+		Username: new("updated-user"),
+	})
+	require.NoError(t, err)
+	assert.Equal(t, models.StringSlice{"team", "team/platform"}, updated.RepositoryNames)
+
+	// An empty slice clears them.
+	updated, err = svc.UpdateRegistry(context.Background(), registry.ID, models.UpdateContainerRegistryRequest{
+		RepositoryNames: &[]string{},
+	})
+	require.NoError(t, err)
+	assert.Empty(t, updated.RepositoryNames)
+	assert.Empty(t, fetchRegistry(t, db, registry.ID).RepositoryNames)
 }

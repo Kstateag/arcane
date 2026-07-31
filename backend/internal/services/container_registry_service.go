@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/cenkalti/backoff/v5"
+	ref "github.com/distribution/reference"
 	"github.com/samber/hot"
 	"github.com/samber/mo"
 	"golang.org/x/sync/singleflight"
@@ -174,15 +175,20 @@ func (s *ContainerRegistryService) CreateRegistry(ctx context.Context, req model
 	if err != nil {
 		return nil, err
 	}
+	repositoryNames, err := normalizeRepositoryNamesInternal(req.RepositoryNames)
+	if err != nil {
+		return nil, err
+	}
 
 	registryRecord := &models.ContainerRegistry{
-		URL:          req.URL,
-		Description:  req.Description,
-		Insecure:     req.Insecure != nil && *req.Insecure,
-		Enabled:      req.Enabled == nil || *req.Enabled,
-		RegistryType: registryType,
-		CreatedAt:    time.Now(),
-		UpdatedAt:    time.Now(),
+		URL:             req.URL,
+		Description:     req.Description,
+		Insecure:        req.Insecure != nil && *req.Insecure,
+		Enabled:         req.Enabled == nil || *req.Enabled,
+		RegistryType:    registryType,
+		RepositoryNames: repositoryNames,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
 	}
 
 	if registryType == registryTypeECR {
@@ -262,6 +268,15 @@ func (s *ContainerRegistryService) UpdateRegistry(ctx context.Context, id string
 	utils.ApplyNullable(&registryRecord.Description, mo.PointerToOption(req.Description))
 	utils.ApplyChanged(&registryRecord.Insecure, mo.PointerToOption(req.Insecure))
 	utils.ApplyChanged(&registryRecord.Enabled, mo.PointerToOption(req.Enabled))
+
+	// RepositoryNames: nil pointer means "don't touch"; empty slice means "clear".
+	if req.RepositoryNames != nil {
+		repositoryNames, err := normalizeRepositoryNamesInternal(*req.RepositoryNames)
+		if err != nil {
+			return nil, err
+		}
+		registryRecord.RepositoryNames = repositoryNames
+	}
 
 	if registryRecord.RegistryType == registryTypeECR {
 		if err := s.updateECRRegistryFieldsInternal(registryRecord, req); err != nil {
@@ -1192,6 +1207,14 @@ func (s *ContainerRegistryService) checkRegistryNeedsUpdateInternal(item contain
 	needsUpdate = utils.ApplyChanged(&existing.Insecure, mo.Some(item.Insecure)) || needsUpdate
 	needsUpdate = utils.ApplyChanged(&existing.Enabled, mo.Some(item.Enabled)) || needsUpdate
 
+	// Normalizing first gives the manager and the local copy the same
+	// representation, so the comparison below only reports real changes.
+	repositoryNames, err := normalizeRepositoryNamesInternal(item.RepositoryNames)
+	if err != nil {
+		return false, err
+	}
+	needsUpdate = utils.ApplySliceChanged(&existing.RepositoryNames, mo.Some(repositoryNames)) || needsUpdate
+
 	// Clear stale credentials when registry type changes during sync
 	if newType != existing.RegistryType {
 		if newType == registryTypeECR {
@@ -1250,20 +1273,25 @@ func (s *ContainerRegistryService) createNewRegistryInternal(ctx context.Context
 	if err != nil {
 		return err
 	}
+	repositoryNames, err := normalizeRepositoryNamesInternal(item.RepositoryNames)
+	if err != nil {
+		return err
+	}
 
 	newRegistry := &models.ContainerRegistry{
 		BaseModel: models.BaseModel{
 			ID: item.ID,
 		},
-		URL:            item.URL,
-		Description:    item.Description,
-		Insecure:       item.Insecure,
-		Enabled:        item.Enabled,
-		RegistryType:   registryType,
-		AWSAccessKeyID: item.AWSAccessKeyID,
-		AWSRegion:      item.AWSRegion,
-		CreatedAt:      time.Now(),
-		UpdatedAt:      time.Now(),
+		URL:             item.URL,
+		Description:     item.Description,
+		Insecure:        item.Insecure,
+		Enabled:         item.Enabled,
+		RegistryType:    registryType,
+		RepositoryNames: repositoryNames,
+		AWSAccessKeyID:  item.AWSAccessKeyID,
+		AWSRegion:       item.AWSRegion,
+		CreatedAt:       time.Now(),
+		UpdatedAt:       time.Now(),
 	}
 
 	if registryType == registryTypeGeneric {
@@ -1301,6 +1329,24 @@ func normalizeRegistryTypeInternal(value string) (string, error) {
 	default:
 		return "", common.Classify(common.ErrValidation, errors.WithDetails(errors.New("Registry type must be one of: generic, ecr"), "field", "registryType"))
 	}
+}
+
+// normalizeRepositoryNamesInternal trims, filters and deduplicates the given
+// entries (preserving first-occurrence order) and validates what remains. It
+// returns a non-nil slice so that GORM always serializes to a JSON array.
+func normalizeRepositoryNamesInternal(raw []string) (models.StringSlice, error) {
+	names := utils.UniqueNonEmptyStrings(raw)
+	result := make(models.StringSlice, 0, len(names))
+	for _, name := range names {
+		// A repository name is only a path, so pair it with placeholder domain
+		// and tag segments to validate it against the reference grammar.
+		if _, err := ref.ParseNormalizedNamed("registry.invalid/" + name + "/placeholder:latest"); err != nil {
+			return nil, common.Classify(common.ErrValidation, errors.WithDetails(errors.Errorf("invalid repository name %q", name), "field", "repositoryNames"))
+		}
+		result = append(result, name)
+	}
+
+	return result, nil
 }
 
 func (s *ContainerRegistryService) deleteUnsyncedInternal(ctx context.Context, existingMap map[string]*models.ContainerRegistry, syncedIDs map[string]bool) error {
